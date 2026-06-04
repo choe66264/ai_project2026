@@ -1,69 +1,81 @@
+from pathlib import Path
 import streamlit as st
 import pandas as pd
 import folium
 from streamlit_folium import st_folium
 
-st.set_page_config(page_title="커피판매점 연도별 분석", layout="wide")
-
-st.title("☕ 커피판매점 연도별 분석")
-
-files = st.file_uploader(
-    "연도별 CSV 파일을 여러 개 업로드하세요",
-    type="csv",
-    accept_multiple_files=True
+st.set_page_config(
+    page_title="커피판매점 지도",
+    layout="wide"
 )
 
-if files:
+st.title("☕ 부산 서구 커피판매점 현황")
 
-    data = []
+# CSV 경로
+csv_path = Path(__file__).parent.parent / "coffe.csv"
 
-    for file in files:
+# 데이터 읽기
+try:
+    df = pd.read_csv(csv_path, encoding="cp949")
+except:
+    df = pd.read_csv(csv_path, encoding="utf-8")
 
-        try:
-            df = pd.read_csv(file, encoding="cp949")
-        except:
-            file.seek(0)
-            df = pd.read_csv(file, encoding="utf-8")
+st.success(f"총 판매점 수 : {len(df)}개")
 
-        # 파일명 예시: coffe_2023.csv
-        year = ''.join(filter(str.isdigit, file.name))[:4]
+st.subheader("데이터 미리보기")
+st.dataframe(df.head())
 
-        data.append({
-            "연도": int(year),
-            "판매점수": len(df)
-        })
+# 부산 서구 중심 좌표
+center_lat = 35.097
+center_lon = 129.024
 
-    result = pd.DataFrame(data)
+m = folium.Map(
+    location=[center_lat, center_lon],
+    zoom_start=13
+)
 
-    top5 = result.sort_values(
-        "판매점수",
-        ascending=False
-    ).head(5)
+# 주소 컬럼 찾기
+address_col = None
 
-    st.subheader("판매점 수 TOP 5 연도")
-    st.dataframe(top5, use_container_width=True)
+for col in df.columns:
+    if "소재지" in col or "주소" in col:
+        address_col = col
+        break
 
-    # Folium 지도
-    m = folium.Map(
-        location=[35.10, 129.02],
-        zoom_start=11
-    )
+# 위치 정보가 없으므로 예시 마커 생성
+for idx, row in df.head(50).iterrows():
 
-    for i, row in top5.reset_index().iterrows():
+    lat = center_lat + (idx % 10) * 0.001
+    lon = center_lon + (idx % 10) * 0.001
 
-        folium.Marker(
-            location=[
-                35.10 + i * 0.01,
-                129.02 + i * 0.01
-            ],
-            popup=f"{row['연도']}년 : {row['판매점수']}개"
-        ).add_to(m)
+    popup_text = ""
 
-    st.subheader("Folium 지도")
-    st_folium(m, width=1000, height=600)
+    if "업소명" in df.columns:
+        popup_text += f"업소명 : {row['업소명']}<br>"
 
-    st.subheader("막대그래프")
+    if address_col:
+        popup_text += f"주소 : {row[address_col]}"
 
-    st.bar_chart(
-        top5.set_index("연도")["판매점수"]
-    )
+    folium.Marker(
+        location=[lat, lon],
+        popup=popup_text
+    ).add_to(m)
+
+st.subheader("🗺️ 커피판매점 지도")
+
+st_folium(
+    m,
+    width=1000,
+    height=600
+)
+
+st.subheader("📊 판매점 수")
+
+count_df = pd.DataFrame({
+    "구분": ["커피판매점"],
+    "개수": [len(df)]
+})
+
+st.bar_chart(
+    count_df.set_index("구분")
+)
